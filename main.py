@@ -1,6 +1,9 @@
 import json
+import sys
 
 from common_functions import write_log
+
+from components.airmon import Airmon
 
 
 def load_configuration_parameters() -> tuple[str | None, str | None, str | None]:
@@ -10,13 +13,11 @@ def load_configuration_parameters() -> tuple[str | None, str | None, str | None]
         dictionary: str = ''
         interface: str | None = None
         bssid: str | None = None
-        try:
-            if 'dictionary' in main_configuration and main_configuration['dictionary']:
-                dictionary = main_configuration['dictionary']
-            else:
-                raise SystemExit
-        except SystemExit:
+        if 'dictionary' in main_configuration and main_configuration['dictionary']:
+            dictionary = main_configuration['dictionary']
+        else:
             write_log('Dictionary for cracking passphrase not specified in configuration')
+            sys.exit(1)
 
 
         if 'interface' in main_configuration and main_configuration['interface']:
@@ -30,4 +31,8 @@ def load_configuration_parameters() -> tuple[str | None, str | None, str | None]
     
 if __name__ == '__main__':
     WIFI_CRACK_DICTIONARY, INTERFACE, BSSID = load_configuration_parameters()
+    
+    """Setting interface in monitor mode"""
+    airmon: Airmon = Airmon(INTERFACE)
+    airmon.start_airmon()
     
