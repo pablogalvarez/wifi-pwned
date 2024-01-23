@@ -20,6 +20,8 @@ class Airmon:
 
     
     def start_airmon(self):
+        """Set configured network interface in monitor mode executing the command: airmon-ng check kill && airmon-ng start <interface>"""
+
         command = f"airmon-ng check kill && airmon-ng start {self.interface}"
         run = subprocess.run(command, shell=True, capture_output=True, text=True)
         if not run.stderr and run.stdout:
