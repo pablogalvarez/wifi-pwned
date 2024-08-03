@@ -3,6 +3,7 @@
 
 # Custom
 configuration*
+*.csv
 
 ### Linux ###
 *~

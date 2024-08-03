@@ -4,6 +4,7 @@ import sys
 from common_functions import get_config_field, write_log
 
 from components.airmon import Airmon
+from components.airodump import Airodump
 
 
 SUCCESSFULL_PREFIX = '[+]'
@@ -14,7 +15,7 @@ def check_config_file():
     try:
         with open('configuration.json') as f:
             configuration_fields = json.load(f)
-            mandatory_fields = ['interface', 'ssid']
+            mandatory_fields = ['interface']
             abort_program = False
             for field in mandatory_fields:
                 if not field in configuration_fields:
@@ -35,6 +36,15 @@ if __name__ == '__main__':
     # Setting interface in monitor mode
     interface = get_config_field('interface')
 
-    airmon: Airmon = Airmon()
-    airmon.check(kill=True)
-    airmon.start(interface)
+    # airmon: Airmon = Airmon()
+    # airmon.check(kill=True)
+    # monitor_interface: str = airmon.start(interface)
+    monitor_interface = 'wlan0mon'
+
+    # Capturing packets with airodump-ng
+    airodump: Airodump = Airodump()
+
+    # Exporting csv file to get all networks
+    args = ['--output-format csv', '-w networks']
+    airodump.exec(monitor_interface, args)
+

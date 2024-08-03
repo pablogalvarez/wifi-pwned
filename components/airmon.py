@@ -6,7 +6,7 @@ from common_functions import write_log
 class Airmon:
     """Class for airmon methods"""
 
-    def start(self, interface: str, channel: str | None = None, frequency: int | None = None):
+    def start(self, interface: str, channel: str | None = None, frequency: int | None = None) -> str:
         """Method to execute airmon-ng start
 
         It is important to know it is not possible to use channel and frequency at the same time.
@@ -16,6 +16,8 @@ class Airmon:
             channel (str): especify a channel
             frequency (str): specify a frequency in MHz
 
+        Returns:
+            this function returns a string containing the new monitor mode interface
         """
         if channel and frequency:
             write_log('ERROR. No se pueden especificar los parametros "channel" y "frequency" a la vez en Airmon.start()')
@@ -33,8 +35,10 @@ class Airmon:
         run = subprocess.run(command, shell=True, capture_output=True, text=True)
         if run.stderr:
             write_log(f'ERROR. Ha fallado al ejecutar el comando "{command}"')
+            return ''
         else:
             write_log(f'Interfaz de red "{interface}" configurada en modo monitor')
+            return f'{interface}mon'
 
     
     def stop(self, interface: str):

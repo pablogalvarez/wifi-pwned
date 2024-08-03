@@ -1,18 +1,15 @@
 import subprocess
-from time import sleep
+import threading
 
 from common_functions import write_log
 
-def execute(interface: str, bssid: str) -> None:
-    monitor_interface = f'{interface}mon'
-    
-    command = 'ip link show'
-    run = subprocess.run(command, shell=True, capture_output=True, text=True)
-    if not run.stderr and run.stdout:
-        if monitor_interface in run.stdout:
-            command = f'airodump-ng {monitor_interface} -w APs --output-format csv'
-            run = subprocess.run(command, shell=True, capture_output=True, text=True)
-        else:
-            write_log(f'Monitor interface with {interface} as source has not been created')
-    else:
-        write_log(f'Error executing "{command}"')
+class Airodump:
+    """Class for airodump-ng methods"""
+
+    def exec(self, monitor_interface: str, args: list):
+        airodump_arguments = ' '.join(args)
+        command = f'airodump-ng {airodump_arguments} {monitor_interface}'
+        try:
+            subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
+        except Exception:
+            print('Terminada captura de paquetes')
