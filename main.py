@@ -6,6 +6,8 @@ from common_functions import get_config_field, write_log
 from components.airmon import Airmon
 from components.airodump import Airodump
 
+from csv_functions import get_required_network_information
+
 
 SUCCESSFULL_PREFIX = '[+]'
 ERROR_PREFIX = '[!]'
@@ -45,6 +47,14 @@ if __name__ == '__main__':
     airodump: Airodump = Airodump()
 
     # Exporting csv file to get all networks
-    args = ['--output-format csv', '-w networks']
+    output_file_name = 'networks'
+    args = ['--output-format csv', f'-w {output_file_name}']
     airodump.exec(monitor_interface, args)
+
+    # Once airodump has stored all networks, I get the network bssid and its channel
+    network_ssid = get_config_field('ssid')
+    bssid, channel = get_required_network_information(output_file_name, network_ssid)
+    if not bssid or not channel:
+        write_log(f'[!] Network with SSID {network_ssid} not found')
+    
 
