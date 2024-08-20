@@ -3,6 +3,7 @@ import signal
 import json
 import time
 import sys
+import os
 
 from common_functions import get_config_field, write_log
 
@@ -36,11 +37,23 @@ def check_config_file():
         
         
 def check_dependencies():
-    dependencies = ['hcxpcapngtool']
+    dependencies = ['hcxpcapngtool', 'minicom']
     for command in dependencies:
         output = subprocess.run(command, shell=True, capture_output=True, text=True)
         if output.returncode != 0 and output.returncode != 1:
             write_log(f'[!] Command "{command}" not installed')
+            sys.exit(1)
+            
+            
+def enable_internet():
+    path = os.path.join('minicom', 'init.txt')
+    try:
+        with open(path, 'r') as _:
+            command = 'minicom -D /dev/ttyUSB2 -S minicom/init.txt'
+            subprocess.Popen(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        write_log(f'[!] Script to start internet through SIM card does not exists')
+        sys.exit(1)
             
             
 def pcap_to_hashcat_format(file_name: str):
@@ -48,8 +61,10 @@ def pcap_to_hashcat_format(file_name: str):
     run = subprocess.run(command, shell=True, capture_output=True, text=True)
     if run.stderr:
         write_log(f'[!] Failed in command "{command}"')
+        sys.exit(1)
     else:
         write_log(f'[+] .cap file exported correctly to hashcat format')
+        return 'psk.hc22000'
 
 
 if __name__ == '__main__':
@@ -58,6 +73,9 @@ if __name__ == '__main__':
     
     # Check if every command it is installed
     check_dependencies()
+    
+    # Enable internet through SIM card
+    enable_internet()
     
     # Setting interface in monitor mode
     interface = get_config_field('interface')
@@ -104,4 +122,15 @@ if __name__ == '__main__':
     write_log(f'[+] Handshake captured')
     
     # Transform .cap file to hashcat format with hcxpcappngtool
-    pcap_to_hashcat_format(handshake_file_name)
+    hashcat_format_file_name = pcap_to_hashcat_format(handshake_file_name)
+    
+    '''
+    A partir de aqui tengo que:
+    1. abrir el tunel ssh inverso a mi maquina
+    2. enviar el psk.hc22000 a mi maquina
+    3. desde mi maquina, cuando crackee la password de la wifi, envio cual es la password a traves de este tunel previamente creado
+    4. cierro el tunel antiguo
+    5. me conecto a la wifi, hago dhclient -v wlan0
+    6. abro ahora otro tunel ssh nuevamente para dejarlo abierto ya para siempre
+    
+    '''
