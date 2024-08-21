@@ -83,9 +83,6 @@ if __name__ == '__main__':
     # Check if every command it is installed
     check_dependencies()
     
-    # Enable internet through SIM card
-    enable_internet()
-    
     # Setting interface in monitor mode
     interface = get_config_field('interface')
 
@@ -130,8 +127,16 @@ if __name__ == '__main__':
         
     write_log(f'[+] Handshake captured')
     
-    # Stop monitor mode
+    # Stop monitor mode and restart NetworkManager
     airmon.stop(monitor_interface)
+    
+    command = 'service NetworkManager restart'
+    output = subprocess.run(command, shell=True, capture_output=True, text=True)
+    if output.stderr:
+        write_log(f'[!] Error executing command "{command}"')
+        
+    # Enable internet through SIM card
+    enable_internet()
     
     # Transform .cap file to hashcat format with hcxpcappngtool
     hashcat_format_file_name = pcap_to_hashcat_format(handshake_file_name)
