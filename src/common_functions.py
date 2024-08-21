@@ -7,7 +7,7 @@ def write_log(description: str) -> None:
         f.write(f'{now} {description}\n')
 
 
-def get_config_field(field: str) -> str:
+def get_config_field(field: str):
     with open('configuration.json') as f:
         config_fields = json.load(f)
         return config_fields.get(field)
