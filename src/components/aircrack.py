@@ -12,6 +12,6 @@ class Aircrack:
         return output
         
     def check_captured_handshake(self, file_name: str):
-        args = [f'{file_name}-01.cap']
+        args = [f'src/files/{file_name}-01.cap']
         output = self.exec(args)
         return '1 handshake' in output.stdout

