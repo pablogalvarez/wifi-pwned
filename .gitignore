@@ -4,6 +4,7 @@
 # Custom
 configuration*
 *.csv
+src/files/*
 
 ### Linux ###
 *~
