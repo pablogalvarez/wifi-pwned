@@ -1,7 +1,7 @@
 import subprocess
 import sys
 
-from common_functions import write_log
+from common_functions import get_config_field, write_log
 
 class Airmon:
     """Class for airmon methods"""
@@ -73,3 +73,18 @@ class Airmon:
             write_log(f'ERROR. Ha fallado al ejecutar el comando "{command}"')
         else:
             write_log(f'Preparacion para poner la interfaz de red en modo monitor hecha con exito')
+            
+    
+    def start_monitor_mode(self):
+        interface: str = get_config_field('interface')
+        monitor_interface: str = self.start(interface)
+        
+        if not monitor_interface:
+            write_log(f'[!] Something went wrong setting interface {interface} in monitor mode')
+            sys.exit(1)
+        
+        return monitor_interface
+    
+    def stop_monitor_mode(self, monitor_interface: str):
+        self.stop(monitor_interface)
+        
