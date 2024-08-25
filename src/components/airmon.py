@@ -77,6 +77,7 @@ class Airmon:
     
     def start_monitor_mode(self):
         interface: str = get_config_field('interface')
+        self.check(kill=True)
         monitor_interface: str = self.start(interface)
         
         if not monitor_interface:
