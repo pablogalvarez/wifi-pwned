@@ -11,17 +11,44 @@ class Airodump:
     """Class for airodump-ng methods"""
 
     def capture_available_networks(self, monitor_interface: str, time_capturing: int = 120):
+        """During 'time_capturing' parameter, capture all reachable networks to get the information about the network we are going to attack.
+
+        Args:
+            monitor_interface (str): interface name set in monitor mode.
+            time_capturing (int, optional): Seconds capturing reachable networks. Defaults to 120.
+
+        Returns:
+            str: returns the file name where networks information is stored.
+        """
+        
         networks_file_name = 'networks'
-        command = f'airodump-ng --output-format csv -w src/files/{networks_file_name} {monitor_interface}'
+        networks_file_path = f'src/files/{networks_file_name}'
+        command = ['airodump-ng', '--output-format', 'csv', '-w', networks_file_path, monitor_interface]
         try:
-            subprocess.run(command, shell=True, text=True, capture_output=True, timeout=time_capturing)
-        except Exception:
+            subprocess.run(command, capture_output=True, text=True, timeout=time_capturing)
+            
+        except subprocess.TimeoutExpired:
             write_log('[+] Reachable networks captured')
+        
+        except subprocess.CalledProcessError as e:
+            write_log(f'[!] Failed to execute airodump-ng. Command: {" ".join(command)}. Error: {e.stderr}')
+            sys.exit(1)
             
         return networks_file_name
 
             
     def capture_handshake(self, monitor_interface: str, network_ssid: str, captured_networks_file_name: str):
+        """Method who manages the capture of handshake.
+
+        Args:
+            monitor_interface (str): interface name set in monitor mode.
+            network_ssid (str): target network name.
+            captured_networks_file_name (str): file name where networks information is stored.
+
+        Returns:
+            str: returns the file name where the handshake is stored.
+        """
+        
         network_bssid = self.get_network_field_from_csv(network_ssid, 'bssid', captured_networks_file_name)
         network_channel = self.get_network_field_from_csv(network_ssid, 'channel', captured_networks_file_name)
         
@@ -32,12 +59,18 @@ class Airodump:
         captured_handshake_file_name = f'{network_ssid}-handshake'
         
         command = ['airodump-ng', '-c', network_channel, '--bssid', network_bssid, '-w', f'src/files/{captured_handshake_file_name}', '--output-format', 'pcap', monitor_interface]
-        process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        except subprocess.CalledProcessError:
+            write_log(f'[!] Failed to execute airodump-ng. Command: {" ".join(command)}')
+            sys.exit(1)
         
         aircrack: Aircrack = Aircrack()
         handshake_captured = False
         while not handshake_captured:
             handshake_captured = aircrack.check_captured_handshake(captured_handshake_file_name)
+            # time.sleep(120) PRODUCTION
             time.sleep(15)
             
         process.terminate()
@@ -52,6 +85,17 @@ class Airodump:
 
 
     def get_network_field_from_csv(self, network_name: str, field: str, file_name: str):
+        """Get network field with the name 'field' passed through parameter. This information is searched in the file exported by function 'capture_available_networks()'.
+
+        Args:
+            network_name (str): target network name.
+            field (str): field name searched.
+            file_name (str): file name where networks information is stored.
+
+        Returns:
+            str | None: returns the value of the field if exists. Otherwise returns None.
+        """
+        
         try:
             fields = {
                 'bssid': 0,
