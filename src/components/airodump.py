@@ -3,18 +3,13 @@ import time
 import csv
 import sys
 
-from common_functions import write_log, get_config_field
+from common_functions import write_log
 
 from .aircrack import Aircrack
 
 class Airodump:
     """Class for airodump-ng methods"""
 
-    def get_str_shell_command(self, monitor_interface: str, args: list):
-        airodump_arguments = ' '.join(args)
-        return f'airodump-ng {airodump_arguments} {monitor_interface}'
-    
-    
     def capture_available_networks(self, monitor_interface: str, time_capturing: int = 120):
         networks_file_name = 'networks'
         command = f'airodump-ng --output-format csv -w src/files/{networks_file_name} {monitor_interface}'
