@@ -1,0 +1,21 @@
+{
+    "interface": "wlan0",
+    "ssid": "TARGET_NETWORK_SSID",
+    "send_handshake": {
+        "scp": {
+            "user": "remote_user",
+            "host": "remote_ip",
+            "path": "remote_path",
+            "key_path": "private_key"
+        }
+    },
+    "reverse_ssh_tunnel": {
+        "user": "remote_user",
+        "host": "remote_ip",
+        "port": 9090,
+        "key_path": "private_key"
+    },
+    "telegram_bot": {
+        "api_token": "1111111111:your_token"
+    }
+}
