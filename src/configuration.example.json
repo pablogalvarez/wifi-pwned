@@ -16,6 +16,7 @@
         "key_path": "private_key"
     },
     "telegram_bot": {
-        "api_token": "1111111111:your_token"
+        "api_token": "1111111111:your_token",
+	"chat_id": "99999999",
     }
 }

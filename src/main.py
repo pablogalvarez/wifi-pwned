@@ -340,7 +340,3 @@ if __name__ == '__main__':
     # Open persistent reverse tunnel
     open_reverse_tunnel(persistent=True)
     telegram_message(telegram_bot, 'Tunel persistente abierto')
-    
-    '''
-    Listo!! A partir de aqui a lanzar scripts
-    '''
